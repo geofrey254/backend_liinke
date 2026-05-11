@@ -1,5 +1,56 @@
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Environment variables
 .env
-__pycache__
-*.pyc
-.venv
-data
+.env.*
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# SQLite databases
+*.db
+*.sqlite3
+
+# FastAPI/Uvicorn
+*.pid
+
+# PyCharm
+*.iml
+
+# arch
+folder.txt
+/folder.txt
+*/folder.txt
