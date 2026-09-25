@@ -1,3 +1,9 @@
-@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(data:UserCreate):
-    return user_service.create_user(data)
+from fastapi import APIRouter, Depends
+from app.services.user_service import get_users
+
+router = APIRouter()
+
+@router.get("/users")
+def get_users():
+    users = get_users()
+    return users
