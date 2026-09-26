@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # DATABASE SETTINGS 
-    DATABASE_URI: str = f"sqlite:///{BASE_DIR}/db.sqlite3"
+    DATABASE_URI: str
 
     # APPLICATION SETTINGS
     app_name: str = "Liinke B2B"

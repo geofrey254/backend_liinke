@@ -4,4 +4,4 @@ from app.api.v1.endpoints.router import router as endpoints_router
 
 router = APIRouter()
 
-router.include_router(endpoints_router, tags=["v1"])
+router.include_router(endpoints_router)
