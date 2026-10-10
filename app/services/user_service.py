@@ -12,7 +12,6 @@ def create_user_service(user_data: UserCreate, db: SessionDep) -> UserResponse:
     hashed_password = hash_password(user_data.password)
 
     new_user = User(
-        username=user_data.username,
         full_name=user_data.full_name,
         email=user_data.email,
         hashed_password=hashed_password
