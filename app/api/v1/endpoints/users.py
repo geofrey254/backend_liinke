@@ -1,16 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import select
-from datetime import timedelta
+from fastapi import APIRouter, Depends
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user
-from app.core.security import create_access_token
 from app.services.user_service import get_users_service, create_user_service, get_user_by_id_service
 
 from app.database.session import SessionDep
 from app.models.user import User, UserCreate, UserResponse
-from app.utils.passwordhash import verify_password
-from app.schemas.auth import LoginRequest
 
 router = APIRouter()
 
