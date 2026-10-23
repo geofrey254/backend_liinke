@@ -73,3 +73,6 @@ class OrganizationMembershipResponse(SQLModel):
     role: OrganizationRole
     status: MembershipStatus
     created_at: datetime
+
+class OrganizationMembershipRoleUpdate(SQLModel):
+    role: OrganizationRole
