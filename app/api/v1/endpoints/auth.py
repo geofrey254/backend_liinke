@@ -1,16 +1,75 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 from datetime import timedelta
+import jwt
 
 from app.core.config import settings
-from app.core.security import create_access_token
+from app.core.security import create_access_token, create_refresh_token
 
 from app.database.session import SessionDep
 from app.models.user import User, UserCreate, UserResponse
 from app.utils.passwordhash import hash_password, verify_password
-from app.schemas.auth import LoginRequest
+from app.schemas.auth import LoginRequest, RefreshTokenRequest
 
 router = APIRouter()
+
+@router.post("/refresh")
+def refresh_access_token(
+    credentials: RefreshTokenRequest,
+    db: SessionDep,
+):
+    try:
+        payload = jwt.decode(
+            credentials.refresh_token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+
+        if payload.get("token_type") != "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        user_id = payload.get("sub")
+
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has expired. Please log in again.",
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    # Ensure the account still exists
+    user = db.exec(
+        select(User).where(User.id == user_id)
+    ).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User no longer exists",
+        )
+
+    new_access_token = create_access_token(
+        data={"sub": str(user.id)}
+    )
+
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
 
 # login
 @router.post("/login")
@@ -34,12 +93,18 @@ def login(credentials: LoginRequest, db: SessionDep):
         ),
     )
 
+    refresh_token = create_refresh_token(
+        data={"sub": str(user.id)}
+    )
+
     # print user info for debugging
     print(f"User {user.email} logged in successfully.")
 
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     }
 
 
