@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
+from app.models.organizationMembership import OrganizationMembershipResponse
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -90,3 +92,7 @@ class OrganizationResponse(SQLModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+class CurrentOrganizationResponse(SQLModel):
+    organization: OrganizationResponse
+    membership: OrganizationMembershipResponse

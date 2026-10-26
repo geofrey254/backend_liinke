@@ -56,13 +56,12 @@ def get_current_organization(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ) -> Organization:
-    if current_user.organization_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is not associated with an organization",
-        )
-    
-    organization = db.get(Organization, current_user.organization_id)
+    statement = select(Organization).join(OrganizationMembership).where(
+        OrganizationMembership.user_id == current_user.id,
+        OrganizationMembership.status == MembershipStatus.ACTIVE
+    )
+
+    organization = db.exec(statement).first()
 
     if organization is None:
         raise HTTPException(

@@ -19,6 +19,7 @@ from app.models.organization import (
     OrganizationCreate,
     OrganizationUpdate,
     OrganizationResponse,
+    CurrentOrganizationResponse
 )
 from app.models.organizationMembership import (
     OrganizationMembership,
@@ -41,7 +42,13 @@ def create_organization(
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    if current_user.organization_id is not None:
+    existing_membership = db.exec(
+        select(OrganizationMembership).where(
+            OrganizationMembership.user_id == current_user.id,
+        )
+    ).first()
+
+    if existing_membership is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User is already associated with an organization",
@@ -68,7 +75,6 @@ def create_organization(
         )
 
         db.add(membership)
-        current_user.organization_id = organization.id
 
         db.commit()
         db.refresh(organization)
@@ -84,7 +90,7 @@ def create_organization(
 
 
 # 2. Retrieve the current organization.
-@router.get("/me", response_model=OrganizationResponse)
+@router.get("/me", response_model=CurrentOrganizationResponse)
 def read_current_organization(
     organization: Annotated[
         Organization, Depends(get_current_organization)
@@ -93,7 +99,10 @@ def read_current_organization(
         OrganizationMembership, Depends(get_current_membership)
     ],
 ):
-    return organization
+    return {
+        "organization": organization,
+        "membership": membership
+    }
 
 
 # 3. Update organization details.
