@@ -1,22 +1,20 @@
 
 from datetime import datetime, timezone
-from enum import Enum
-
+from enum import StrEnum
 from sqlalchemy import DateTime, UniqueConstraint
-from sqlmodel import Field, SQLModel
+from sqlmodel import Enum, Field, SQLModel
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class OrganizationRole(str, Enum):
+class OrganizationRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
 
-
-class MembershipStatus(str, Enum):
+class MembershipStatus(StrEnum):
     ACTIVE = "active"
     INVITED = "invited"
     SUSPENDED = "suspended"
