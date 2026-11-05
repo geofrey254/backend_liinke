@@ -93,7 +93,7 @@ def create_organization(
             detail="Could not create organization. The slug may already exist.",
         ) from None
 
-
+ 
 # 2. Retrieve the current organization.
 @router.get("/me", response_model=CurrentOrganizationResponse)
 def read_current_organization(
