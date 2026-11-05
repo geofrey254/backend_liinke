@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from app.core.dependencies import (
@@ -19,7 +20,6 @@ from app.models.organization import (
     OrganizationCreate,
     OrganizationUpdate,
     OrganizationResponse,
-    CurrentOrganizationResponse
 )
 from app.models.organizationMembership import (
     OrganizationMembership,
@@ -27,6 +27,11 @@ from app.models.organizationMembership import (
     OrganizationMembershipAdminCreate,
     OrganizationMembershipRoleUpdate,
     OrganizationMembershipResponse,
+)
+
+from app.models.organizationSchemas import (
+    CurrentOrganizationResponse,
+    OrganizationMembershipWithOrganization,
 )
 
 router = APIRouter()
@@ -136,7 +141,26 @@ def update_organization(
             status_code=status.HTTP_409_CONFLICT,
             detail="Organization update conflicts with existing data.",
         ) from None
+# get all memberships for a user
+@router.get(
+    "/me/memberships",
+    response_model=list[OrganizationMembershipWithOrganization],
+)
+def get_user_memberships(
+    db: SessionDep,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    statement = (
+        select(OrganizationMembership)
+        .where(
+            OrganizationMembership.user_id == current_user.id
+        )
+        .options(
+            selectinload(OrganizationMembership.organization)
+        )
+    )
 
+    return db.exec(statement).all()
 
 # 4. List current organization members.
 @router.get(

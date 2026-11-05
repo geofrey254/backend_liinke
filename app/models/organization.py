@@ -2,10 +2,12 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
-from app.models.organizationMembership import OrganizationMembershipResponse
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from app.models.organizationMembership import OrganizationMembership
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -50,6 +52,10 @@ class Organization(SQLModel, table=True):
         sa_column_kwargs={"onupdate": utc_now},
     )
 
+    memberships: list["OrganizationMembership"] = Relationship(
+        back_populates="organization"
+    )
+
 
 class OrganizationCreate(SQLModel):
     name: str
@@ -92,7 +98,3 @@ class OrganizationResponse(SQLModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-class CurrentOrganizationResponse(SQLModel):
-    organization: OrganizationResponse
-    membership: OrganizationMembershipResponse

@@ -1,8 +1,12 @@
 
 from datetime import datetime, timezone
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, UniqueConstraint
-from sqlmodel import Enum, Field, SQLModel
+from sqlmodel import Enum, Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.organization import Organization
 
 
 def utc_now() -> datetime:
@@ -54,6 +58,7 @@ class OrganizationMembership(SQLModel, table=True):
         sa_type=DateTime(timezone=True),
         nullable=False,
     )
+    organization: "Organization" = Relationship(back_populates="memberships")
 
 class OrganizationMembershipJoin(SQLModel):
     organization_id: int
