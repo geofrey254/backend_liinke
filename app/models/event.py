@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
+from pydantic import model_validator
 from sqlalchemy import DateTime, Text, CheckConstraint, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -126,18 +127,21 @@ class Event(SQLModel, table=True):
     )
 
 class EventCreate(SQLModel):
-    organization_id: int
-    created_by_user_id: int | None = None
     name: str
     slug: str
     description: str | None = None
+
     timezone_name: str = "Africa/Nairobi"
+
     start_at: datetime | None = None
     end_at: datetime | None = None
+
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+
     venue_name: str | None = None
     venue_address: str | None = None
+
     capacity: int | None = None
     registration_enabled: bool = False
 
@@ -163,15 +167,31 @@ class EventResponse(SQLModel):
     updated_at: datetime
 
 class EventUpdate(SQLModel):
+
     name: str | None = None
     slug: str | None = None
     description: str | None = None
     timezone_name: str | None = None
+
     start_at: datetime | None = None
     end_at: datetime | None = None
+
     registration_opens_at: datetime | None = None
     registration_closes_at: datetime | None = None
+
     venue_name: str | None = None
     venue_address: str | None = None
+
     capacity: int | None = None
     registration_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_required_fields(self):
+
+        if self.name is None and "name" in self.model_fields_set:
+            raise ValueError("Event name cannot be null")
+
+        if self.slug is None and "slug" in self.model_fields_set:
+            raise ValueError("Event slug cannot be null")
+
+        return self
