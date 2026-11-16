@@ -154,6 +154,27 @@ Attendance & Analytics
 
 The product blueprint specifically identifies CSV/XLSX guest import, validation, bulk pass generation, and automated distribution as a core workflow.
 
+### Guest onboarding API
+
+Guest onboarding is organization-scoped and restricted to organization admins and owners:
+
+- `POST /api/v1/guests` and `PATCH /api/v1/guests/{guest_id}` add or clean one guest.
+- `GET /api/v1/guests` lists guests with optional `search`, `limit`, and `offset` filters.
+- `POST /api/v1/events/{event_id}/guest-registrations` creates a guest and registers them.
+- `POST /api/v1/events/{event_id}/guest-registrations/existing` registers an existing guest.
+- `GET /api/v1/events/{event_id}/guest-registrations` lists registrations for an event.
+- `GET /api/v1/events/{event_id}/access-levels` lists assignable event access levels.
+- `POST /api/v1/events/{event_id}/custom-fields` defines an event-specific registration field.
+- `POST /api/v1/guest-imports` accepts `.csv`, `.xlsx`, or `.xlsm` files (up to 10 MB).
+- `POST /api/v1/guest-imports/{batch_id}/mapping` maps any source column names to the canonical guest fields.
+- `GET /api/v1/guest-imports/{batch_id}/rows` previews parsed rows, including validation errors.
+- `PATCH /api/v1/guest-imports/{batch_id}/rows/{row_id}` cleans a row before commit.
+- `POST /api/v1/guest-imports/{batch_id}/commit` creates valid guests and marks existing or invalid rows for review.
+
+Spreadsheet headers are matched case-insensitively. Supported aliases include `Name`, `Email Address`, `Phone Number`, `Company`, and `Job Title`; the canonical fields are `full_name`, `email`, `phone`, `organization_name`, and `job_title`.
+
+Uploads first enter `mapping` status and return the source columns, sample rows, and suggested mappings. The client can accept those suggestions or send a custom mapping such as `{"Attendee": "full_name", "Work Email": "email", "Employer": "organization_name"}`. The API validates the mapping, then normalizes and validates every row before allowing commit.
+
 ## Development
 
 Run the development server:
