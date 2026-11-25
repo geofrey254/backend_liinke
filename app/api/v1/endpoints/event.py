@@ -131,6 +131,31 @@ def get_event(
 
     return event
 
+# get events by slug
+@router.get("/events/slug/{event_slug}", response_model=EventResponse)
+def get_event_by_slug(
+    event_slug: str,
+    db: SessionDep,
+    current_membership: Annotated[
+                OrganizationMembership,
+                Depends(get_current_membership),
+            ],
+):
+   statement = select(Event).where(
+           Event.organization_id == current_membership.organization_id,
+           Event.slug == event_slug,
+       )
+   
+   event = db.exec(statement).first()
+   
+   if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+   
+   return event
+
 # retrieve all events for the organization
 @router.get("/events", response_model=list[EventResponse])
 def get_events(
