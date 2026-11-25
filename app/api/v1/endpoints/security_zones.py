@@ -21,6 +21,7 @@ from app.models.user import User
 from app.services.security_zone_service import (
     create_security_zone,
     get_security_zone,
+    get_security_zones,
     update_security_zone,
     delete_security_zone,
 )
@@ -52,11 +53,12 @@ def create_event_security_zone(
     )
 
 @router.get(
-    "/events/{event_id}/security-zones",
+    "/events/{event_id}/security-zones/{zone_id}",
     response_model=EventSecurityZoneResponse,
 )
 def get_event_security_zone(    
     event_id: int,
+    zone_id: int,
     db: SessionDep,
     membership: Annotated[
         OrganizationMembership,
@@ -66,15 +68,35 @@ def get_event_security_zone(
     return get_security_zone(
         db=db,
         event_id=event_id,
+        zone_id=zone_id,
         organization_id=membership.organization_id,
     )
 
-@router.put(
+@router.get(
     "/events/{event_id}/security-zones",
+    response_model=list[EventSecurityZoneResponse],
+)
+def get_event_security_zones(    
+    event_id: int,
+    db: SessionDep,
+    membership: Annotated[
+        OrganizationMembership,
+        Depends(get_current_membership),
+    ],
+):
+    return get_security_zones(
+        db=db,
+        event_id=event_id,
+        organization_id=membership.organization_id,
+    )
+
+@router.patch(
+    "/events/{event_id}/security-zones/{zone_id}",
     response_model=EventSecurityZoneResponse,
 )
 def update_event_security_zone(
     event_id: int,
+    zone_id: int,
     data: EventSecurityZoneUpdate,
     db: SessionDep,
     membership: Annotated[
@@ -88,14 +110,16 @@ def update_event_security_zone(
         event_id=event_id,
         organization_id=membership.organization_id,
         data=data,
+        zone_id=zone_id,
     )
 
 @router.delete(
-    "/events/{event_id}/security-zones",
+    "/events/{event_id}/security-zones/{zone_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_event_security_zone(
     event_id: int,
+    zone_id: int,
     db: SessionDep,
     membership: Annotated[
         OrganizationMembership,
@@ -106,5 +130,6 @@ def delete_event_security_zone(
     return delete_security_zone(
         db=db,
         event_id=event_id,
+        zone_id=zone_id,
         organization_id=membership.organization_id,
     )

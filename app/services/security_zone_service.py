@@ -38,11 +38,13 @@ def create_security_zone(
 def get_security_zone(
     db: Session,
     event_id: int,
+    zone_id: int,
     organization_id: int,
 ) -> EventSecurityZone:
     security_zone = db.exec(
         select(EventSecurityZone).where(
             EventSecurityZone.event_id == event_id,
+            EventSecurityZone.id == zone_id,
             EventSecurityZone.organization_id == organization_id,
         )
     ).first()
@@ -54,6 +56,22 @@ def get_security_zone(
         )
 
     return security_zone
+
+def get_security_zones(
+    db: Session,
+    event_id: int,
+    organization_id: int,
+) -> list[EventSecurityZone]:
+    get_event_for_org(db, event_id, organization_id)
+
+    security_zones = db.exec(
+        select(EventSecurityZone).where(
+            EventSecurityZone.event_id == event_id,
+        )
+    ).all()
+
+    return security_zones
+
 
 def update_security_zone(
     db: Session,

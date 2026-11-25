@@ -44,7 +44,6 @@ class EventSecurityZone(SQLModel, table=True):
 
 
 class EventSecurityZoneCreate(SQLModel):
-    event_id: int
     name: str
     code: str
     description: str | None = None

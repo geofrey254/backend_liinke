@@ -404,30 +404,6 @@ def list_event_guests(
         select(EventGuest).where(EventGuest.event_id == event_id)
     ).all()
 
-
-@router.get(
-    "/events/{event_id}/access-levels",
-    response_model=list[dict[str, Any]],
-)
-def list_event_access_levels(
-    event_id: int,
-    db: SessionDep,
-    membership: Annotated[OrganizationMembership, Depends(get_current_membership)],
-    _: Annotated[None, Depends(require_organization_admin)],
-) -> list[dict[str, Any]]:
-    get_event_for_org(db, event_id, membership.organization_id)
-    levels = db.exec(
-        select(EventAccessLevel).where(
-            EventAccessLevel.event_id == event_id,
-            EventAccessLevel.is_active.is_(True),
-        )
-    ).all()
-    return [
-        {"id": level.id, "name": level.name, "code": level.code}
-        for level in levels
-    ]
-
-
 @router.post(
     "/events/{event_id}/custom-fields",
     response_model=EventCustomFieldResponse,
