@@ -190,3 +190,31 @@ Liinke is being built to evolve beyond a simple QR-code generator into:
 > **Enterprise Event Access & Guest Operations Infrastructure**
 
 The backend will provide the foundation for secure access control, attendee management, workflow automation, and event intelligence.
+
+## Team invitations and Resend
+
+The team invitation endpoints are available under the API root:
+
+- `GET /me/invitations` — list invitations for the active organization.
+- `POST /me/invitations` — create and email an invitation (`email`, optional `role`).
+- `POST /me/invitations/{id}/resend` — rotate the invitation token and resend.
+- `DELETE /me/invitations/{id}` — revoke a pending invitation.
+- `GET /invitations/lookup?token=...` — read the public invitation details.
+- `POST /invitations/accept?token=...` — accept as the authenticated invited user.
+
+Configure these backend environment variables:
+
+```dotenv
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=Liinke <invites@your-verified-domain.com>
+FRONTEND_URL=https://your-frontend-domain.com
+```
+
+Verify the sender domain in Resend before using a production sender address. The
+`onboarding@resend.dev` default is intended only for Resend's limited testing
+mode. `httpx` is already a project dependency; no additional Resend SDK is
+required.
+
+The invitation link opens `/invite/accept?token=...` in the frontend. Run the
+Alembic migration that creates `organization_invitations` before deploying this
+feature to an existing database.

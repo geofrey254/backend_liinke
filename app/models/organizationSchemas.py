@@ -15,3 +15,7 @@ class OrganizationMembershipWithOrganization(
 class CurrentOrganizationResponse(SQLModel):
     organization: OrganizationResponse
     membership: OrganizationMembershipResponse
+
+class OrganizationTeamMemberResponse(OrganizationMembershipResponse):
+    email: str
+    full_name: str | None = None

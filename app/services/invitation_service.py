@@ -1,8 +1,7 @@
-"""Business logic for organization invitations.
+"""Database and validation logic for organization invitations.
 
-Email delivery is intentionally kept outside this service so it can be added
-in the email-integration stage without coupling database operations to a mail
-provider.
+The API layer orchestrates email delivery so database rules remain independent
+of the configured email provider.
 """
 
 import hashlib
@@ -97,16 +96,19 @@ def create_invitation(
                 OrganizationMembership.organization_id == organization.id,
             )
         ).first()
-        if existing_membership is not None:
+        if (
+            existing_membership is not None
+            and existing_membership.status == MembershipStatus.ACTIVE
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="This user already has a membership in the organization.",
+                detail="This user is already an active member of the organization.",
             )
 
     pending = db.exec(
         select(OrganizationInvitation).where(
             OrganizationInvitation.organization_id == organization.id,
-            OrganizationInvitation.email == normalized_email,
+            func.lower(OrganizationInvitation.email) == normalized_email,
             OrganizationInvitation.status == InvitationStatus.PENDING,
         )
     ).first()
@@ -214,6 +216,7 @@ def resend_invitation(
     db: Session,
     organization_id: int,
     invitation_id: int,
+    inviter_membership: OrganizationMembership | None = None,
 ) -> tuple[OrganizationInvitation, str]:
     invitation = db.exec(
         select(OrganizationInvitation).where(
@@ -230,6 +233,9 @@ def resend_invitation(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only pending invitations can be resent.",
         )
+
+    if inviter_membership is not None:
+        _ensure_inviter_can_assign_role(inviter_membership, invitation.role)
 
     if _as_utc(invitation.expires_at) <= _now():
         invitation.status = InvitationStatus.EXPIRED
@@ -307,7 +313,7 @@ def accept_invitation(
     if invitation.status != InvitationStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"This invitation is {invitation.status.value} and cannot be accepted.",
+            detail=f"This invitation is {invitation.status} and cannot be accepted.",
         )
 
     if _as_utc(invitation.expires_at) <= _now():
@@ -345,18 +351,29 @@ def accept_invitation(
         )
     ).first()
 
-    if existing_membership is not None:
+    if (
+        existing_membership is not None
+        and existing_membership.status == MembershipStatus.ACTIVE
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You already have a membership record for this organization. Contact an organization administrator if you need access restored.",
+            detail="You are already an active member of this organization.",
         )
 
-    membership = OrganizationMembership(
-        user_id=current_user.id,
-        organization_id=organization.id,
-        role=invitation.role,
-        status=MembershipStatus.ACTIVE,
-    )
+    if existing_membership is not None:
+        # Reactivate a previously suspended or revoked membership instead of
+        # violating the unique user/organization membership constraint.
+        membership = existing_membership
+        membership.role = invitation.role
+        membership.status = MembershipStatus.ACTIVE
+    else:
+        membership = OrganizationMembership(
+            user_id=current_user.id,
+            organization_id=organization.id,
+            role=invitation.role,
+            status=MembershipStatus.ACTIVE,
+        )
+
     invitation.status = InvitationStatus.ACCEPTED
     invitation.accepted_at = _now()
 

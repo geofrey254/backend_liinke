@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # EMAIL SETTINGS
-    RESEND_API_KEY: str
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # CORS SETTINGS
     CORS_ORIGINS: list[str] = ["*"]

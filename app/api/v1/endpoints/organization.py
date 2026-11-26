@@ -32,6 +32,7 @@ from app.models.organizationMembership import (
 from app.models.organizationSchemas import (
     CurrentOrganizationResponse,
     OrganizationMembershipWithOrganization,
+    OrganizationTeamMemberResponse,
 )
 
 router = APIRouter()
@@ -165,7 +166,7 @@ def get_user_memberships(
 # 4. List current organization members.
 @router.get(
     "/me/members",
-    response_model=list[OrganizationMembershipResponse],
+    response_model=list[OrganizationTeamMemberResponse],
 )
 def list_members(
     db: SessionDep,
@@ -176,10 +177,21 @@ def list_members(
         OrganizationMembership, Depends(get_current_membership)
     ],
 ):
-    statement = select(OrganizationMembership).where(
-        OrganizationMembership.organization_id == organization.id
+    statement = (
+        select(OrganizationMembership, User)
+        .join(User, User.id == OrganizationMembership.user_id)
+        .where(OrganizationMembership.organization_id == organization.id)
+        .order_by(OrganizationMembership.created_at.asc())
     )
-    return db.exec(statement).all()
+    rows = db.exec(statement).all()
+    return [
+        {
+            **membership.model_dump(),
+            "email": user.email,
+            "full_name": user.full_name,
+        }
+        for membership, user in rows
+    ]
 
 
 # 5. Add a member to the current organization.

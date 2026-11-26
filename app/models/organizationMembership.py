@@ -17,6 +17,7 @@ class OrganizationRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
+    
 
 class MembershipStatus(StrEnum):
     ACTIVE = "active"

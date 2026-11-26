@@ -15,9 +15,7 @@ class OrganizationInvitationCreate(SQLModel):
     @classmethod
     def owner_cannot_be_invited(cls, value: OrganizationRole) -> OrganizationRole:
         if value == OrganizationRole.OWNER:
-            raise ValueError(
-                "Owner role cannot be assigned through an invitation."
-            )
+            raise ValueError("Owner role cannot be assigned through an invitation.")
         return value
 
 
@@ -31,3 +29,19 @@ class OrganizationInvitationResponse(SQLModel):
     expires_at: datetime
     accepted_at: datetime | None = None
     created_at: datetime
+
+
+class InvitationPublicResponse(SQLModel):
+    organization_name: str
+    organization_slug: str
+    email: EmailStr
+    role: OrganizationRole
+    status: InvitationStatus
+    expires_at: datetime
+
+
+class InvitationAcceptResponse(SQLModel):
+    message: str
+    organization_id: int
+    organization_slug: str
+    role: OrganizationRole
