@@ -57,7 +57,10 @@ def create_organization(
     if existing_membership is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User is already associated with an organization",
+            detail={
+                "code": "USER_ALREADY_IN_ORGANIZATION",
+                "message": "You are already associated with an organization.",
+            },
         )
 
     organization = Organization(
@@ -72,7 +75,7 @@ def create_organization(
 
     try:
         db.add(organization)
-        db.flush()  # Obtain the new organization ID before committing.
+        db.flush()
 
         membership = OrganizationMembership(
             user_id=current_user.id,
@@ -81,17 +84,20 @@ def create_organization(
         )
 
         db.add(membership)
-
         db.commit()
         db.refresh(organization)
 
         return organization
 
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Could not create organization. The slug may already exist.",
+            detail={
+                "code": "ORGANIZATION_CONFLICT",
+                "message": "Could not create organization. Check for duplicate organization details.",
+            },
         ) from None
 
  
