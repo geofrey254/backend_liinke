@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Text
 from sqlmodel import Field, SQLModel
 
 def utc_now() -> datetime:
@@ -22,13 +22,6 @@ class ImportBatchStatus(StrEnum):
 
 class ImportBatch(SQLModel, table=True):
     __tablename__ = "import_batches"
-
-    __table_args__ = (
-        UniqueConstraint(
-            "organization_id", "original_file_name",
-            name="uq_import_batches_organization_name",
-        ),
-    )
 
     id: int | None = Field(default=None, primary_key=True)
 

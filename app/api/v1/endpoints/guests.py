@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field as PydanticField
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -60,6 +60,12 @@ HEADER_ALIASES = {
     "company": "organization_name",
     "organization": "organization_name",
     "jobtitle": "job_title",
+    "accesslevel": "access_level",
+    "access": "access_level",
+    "ticket": "access_level",
+    "tickettype": "access_level",
+    "passtype": "access_level",
+    "pass": "access_level",
 }
 GUEST_FIELDS = {"full_name", "first_name", "last_name", "email", "phone", "organization_name", "job_title"}
 IMPORT_FIELDS = GUEST_FIELDS | {"access_level"}
@@ -79,34 +85,55 @@ def _clean_value(value: Any) -> str | None:
 
 
 def _parse_csv(content: bytes) -> tuple[list[str], list[dict[str, Any]]]:
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
+    # Excel exports may be UTF-8 (with or without BOM), UTF-16, or Windows-1252.
+    text = None
+    for encoding in ("utf-8-sig", "utf-16", "cp1252"):
+        try:
+            text = content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise HTTPException(status_code=422, detail="The CSV encoding is not supported")
+    sample = text[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     if not reader.fieldnames:
         raise HTTPException(status_code=422, detail="The spreadsheet has no header row")
-    headers = [str(header) for header in reader.fieldnames]
+    headers = [str(header).strip() for header in reader.fieldnames]
     return headers, [
-        {key: _clean_value(value) for key, value in row.items() if key}
+        {str(key).strip(): _clean_value(value) for key, value in row.items() if key}
         for row in reader
+        if any(value not in (None, "") for value in row.values())
     ]
 
 
 def _parse_excel(content: bytes) -> tuple[list[str], list[dict[str, Any]]]:
     if load_workbook is None:
-        raise HTTPException(status_code=500, detail="Excel import support is not installed")
-    workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    worksheet = workbook.active
-    rows = worksheet.iter_rows(values_only=True)
-    headers = next(rows, None)
-    if not headers or not any(header is not None for header in headers):
-        raise HTTPException(status_code=422, detail="The spreadsheet has no header row")
-    source_headers = [str(header) for header in headers]
-    return source_headers, [
-        {
-            key: _clean_value(value)
-            for key, value in zip(source_headers, values, strict=False)
-        }
-        for values in rows
-    ]
+        raise HTTPException(status_code=500, detail="Excel import support is not installed; install the backend requirements")
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        worksheet = workbook.active
+        rows = worksheet.iter_rows(values_only=True)
+        headers = next(rows, None)
+        if not headers or not any(header is not None for header in headers):
+            raise HTTPException(status_code=422, detail="The spreadsheet has no header row")
+        source_headers = [str(header).strip() if header is not None else "" for header in headers]
+        parsed = [
+            {key: _clean_value(value) for key, value in zip(source_headers, values, strict=False) if key}
+            for values in rows
+        ]
+        return source_headers, [row for row in parsed if any(value is not None for value in row.values())]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Unable to read this Excel file. Ensure it is a valid .xlsx or .xlsm workbook.") from exc
+    finally:
+        if "workbook" in locals():
+            workbook.close()
 
 
 def _parse_file(
@@ -127,13 +154,14 @@ def _suggest_mappings(headers: list[str]) -> dict[str, str]:
     suggestions: dict[str, str] = {}
     for header in headers:
         target = _normalize_header(header)
-        if target in GUEST_FIELDS and target not in suggestions.values():
+        if target in IMPORT_FIELDS and target not in suggestions.values():
             suggestions[header] = target
     return suggestions
 
 
 class GuestImportMapping(BaseModel):
     mappings: dict[str, str]
+    default_access_level_id: int | None = PydanticField(default=None, gt=0)
 
 
 class EventGuestCreate(BaseModel):
@@ -276,6 +304,42 @@ def _batch_for_org(db: SessionDep, batch_id: int, organization_id: int) -> Impor
     if batch is None:
         raise HTTPException(status_code=404, detail="Import batch not found")
     return batch
+
+
+def _persist_import_batch(
+    db: SessionDep,
+    batch: ImportBatch,
+    parsed_rows: list[dict[str, Any]],
+) -> ImportBatch:
+    """Persist an import batch and its rows atomically.
+
+    A failed flush or commit leaves the SQLAlchemy session in a failed state,
+    so always roll it back before returning a controlled API error.
+    """
+    try:
+        db.add(batch)
+        db.flush()
+        for row_number, raw in enumerate(parsed_rows, start=2):
+            db.add(
+                ImportRow(
+                    import_batch_id=batch.id,
+                    row_number=row_number,
+                    raw_data=json.dumps(raw, default=str),
+                    status=ImportRowStatus.PENDING,
+                )
+            )
+        db.commit()
+        db.refresh(batch)
+        return batch
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "The import could not be saved because it conflicts with an "
+                "existing database record. Please retry the upload."
+            ),
+        ) from None
 
 
 def _refresh_batch_counts(db: SessionDep, batch: ImportBatch) -> None:
@@ -474,7 +538,7 @@ def update_event_guest(
     ).first()
     if registration is None:
         raise HTTPException(status_code=404, detail="Event guest registration not found")
-    if registration_data.access_level_id is not None:
+    if "access_level_id" in registration_data.model_fields_set:
         validate_access_level(db, event_id, registration_data.access_level_id)
         registration.access_level_id = registration_data.access_level_id
     if registration_data.registration_status is not None:
@@ -610,19 +674,7 @@ def upload_guest_import(
         status=ImportBatchStatus.MAPPING,
         column_mappings=json.dumps({"suggested": _suggest_mappings(source_columns)}),
     )
-    db.add(batch)
-    db.flush()
-    for row_number, raw in enumerate(parsed_rows, start=2):
-        db.add(
-            ImportRow(
-                import_batch_id=batch.id,
-                row_number=row_number,
-                raw_data=json.dumps(raw, default=str),
-                status=ImportRowStatus.PENDING,
-            )
-        )
-    db.commit()
-    db.refresh(batch)
+    batch = _persist_import_batch(db, batch, parsed_rows)
     return _batch_mapping_response(batch, db)
 
 
@@ -644,11 +696,25 @@ def map_guest_import(
         raise HTTPException(status_code=409, detail="This import is no longer awaiting mapping")
     source_columns = _source_columns(batch, db)
     _validate_mappings(mapping.mappings, source_columns)
-    if "access_level" not in mapping.mappings.values():
+    if "access_level" not in mapping.mappings.values() and mapping.default_access_level_id is None:
         raise HTTPException(
             status_code=422,
-            detail="An access_level mapping is required for event registration imports",
+            detail="Map an access_level column or select a default access level for this import",
         )
+    default_access_level = None
+    if mapping.default_access_level_id is not None:
+        default_access_level = validate_access_level(db, batch.event_id, mapping.default_access_level_id)
+    active_levels = db.exec(
+        select(EventAccessLevel).where(
+            EventAccessLevel.event_id == batch.event_id,
+            EventAccessLevel.is_active.is_(True),
+        )
+    ).all()
+    levels_by_value = {}
+    for level in active_levels:
+        levels_by_value[level.code.strip().casefold()] = level
+        levels_by_value[level.name.strip().casefold()] = level
+        levels_by_value[str(level.id)] = level
     rows = db.exec(
         select(ImportRow)
         .where(ImportRow.import_batch_id == batch.id)
@@ -661,23 +727,20 @@ def map_guest_import(
         )
         if not errors:
             access_value = normalized.get("access_level")
-            access_level = db.exec(
-                select(EventAccessLevel).where(
-                    EventAccessLevel.event_id == batch.event_id,
-                    (EventAccessLevel.code == str(access_value))
-                    | (EventAccessLevel.name == str(access_value)),
-                    EventAccessLevel.is_active.is_(True),
-                )
-            ).first()
+            access_level = (
+                levels_by_value.get(str(access_value).strip().casefold())
+                if access_value is not None
+                else default_access_level
+            )
             if access_level is None:
-                errors.append("access_level: unknown or inactive access level")
+                errors.append("access_level: provide a valid access level or select a default")
             else:
                 normalized["access_level_id"] = access_level.id
             normalized.pop("access_level", None)
-        email = str((normalized or {}).get("email", "")).lower()
-        if not errors and email in seen_emails:
+        email = str((normalized or {}).get("email") or "").strip().casefold()
+        if not errors and email and email in seen_emails:
             errors.append("email: duplicate email in import")
-        if not errors:
+        if not errors and email:
             seen_emails.add(email)
         row.normalized_data = json.dumps(normalized) if normalized else None
         if not errors and normalized:
@@ -690,10 +753,12 @@ def map_guest_import(
                 json.dumps({"possible_guest_ids": [guest.id for guest in possible]})
                 if possible else None
             )
+        else:
+            row.warnings = None
         row.status = ImportRowStatus.VALIDATED if not errors else ImportRowStatus.INVALID
         row.errors = json.dumps(errors) if errors else None
         db.add(row)
-    batch.column_mappings = json.dumps(mapping.mappings)
+    batch.column_mappings = json.dumps({"mappings": mapping.mappings, "default_access_level_id": mapping.default_access_level_id})
     batch.status = ImportBatchStatus.READY_FOR_REVIEW
     _refresh_batch_counts(db, batch)
     db.add(batch)
@@ -747,6 +812,9 @@ def clean_guest_import_row(
     if row is None:
         raise HTTPException(status_code=404, detail="Import row not found")
     normalized, errors = _row_validation(data)
+    previous = json.loads(row.normalized_data or "{}")
+    if normalized is not None and previous.get("access_level_id") is not None:
+        normalized["access_level_id"] = previous["access_level_id"]
     row.normalized_data = json.dumps(normalized) if normalized else None
     row.errors = json.dumps(errors) if errors else None
     row.status = ImportRowStatus.VALIDATED if not errors else ImportRowStatus.INVALID
@@ -825,7 +893,7 @@ def commit_guest_import(
             ImportRow.status == ImportRowStatus.VALIDATED,
         )
     ).all()
-    created = 0
+    processed_registrations = 0
     for row in rows:
         data = json.loads(row.normalized_data or "{}")
         access_level_id = data.pop("access_level_id", None)
@@ -849,7 +917,6 @@ def commit_guest_import(
             guest = Guest(**guest_data.model_dump(), organization_id=membership.organization_id)
             db.add(guest)
             db.flush()
-            created += 1
         row.matched_guest_id = guest.id
         registration = register_guest(
             db,
@@ -861,9 +928,10 @@ def commit_guest_import(
         )
         row.created_event_guest_id = registration.id
         row.status = ImportRowStatus.PROCESSED
+        processed_registrations += 1
     batch.status = (
         ImportBatchStatus.COMPLETED
-        if created == len(rows)
+        if processed_registrations == batch.total_rows
         else ImportBatchStatus.PARTIALLY_COMPLETED
     )
     _refresh_batch_counts(db, batch)
