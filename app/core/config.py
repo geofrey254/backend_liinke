@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # EMAIL SETTINGS
+    RESEND_API_KEY: str
+
     # CORS SETTINGS
     CORS_ORIGINS: list[str] = ["*"]
 

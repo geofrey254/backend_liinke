@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.organization import Organization
 from app.models.organizationMembership import OrganizationMembership
+from app.models.organizationInvitation import OrganizationInvitation
 
 from app.models.event import Event
 from app.models.eventAccessLevelZone import EventAccessLevelZone
