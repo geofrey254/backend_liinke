@@ -1,7 +1,9 @@
 
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
@@ -22,6 +24,7 @@ from app.models.organization import (
     OrganizationResponse,
 )
 from app.models.organizationMembership import (
+    MembershipStatus,
     OrganizationMembership,
     OrganizationRole,
     OrganizationMembershipAdminCreate,
@@ -37,6 +40,29 @@ from app.models.organizationSchemas import (
 
 router = APIRouter()
 
+
+@router.get("/slug-available", tags=["organizations"])
+def check_organization_slug_availability(
+    db: SessionDep,
+    _: Annotated[User, Depends(get_current_user)],
+    slug: str = Query(..., min_length=3, max_length=100),
+):
+    """Check whether a workspace slug is available without exposing org data."""
+    normalized_slug = slug.strip().lower()
+
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", normalized_slug):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Use lowercase letters, numbers, and single hyphens between words.",
+        )
+
+    existing = db.exec(
+        select(Organization.id).where(func.lower(Organization.slug) == normalized_slug)
+    ).first()
+
+    return {"available": existing is None, "slug": normalized_slug}
+
+
 # 1. Create an organization and assign its creator as owner.
 @router.post(
     "/",
@@ -48,24 +74,37 @@ def create_organization(
     db: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    existing_membership = db.exec(
-        select(OrganizationMembership).where(
-            OrganizationMembership.user_id == current_user.id,
+    # A user may own one organization and be a member of any number of
+    # other organizations. The per-organization unique constraint on
+    # (user_id, organization_id) prevents duplicate memberships without
+    # imposing a global one-organization-per-user restriction.
+
+    normalized_slug = org_data.slug.strip().lower()
+    if not 3 <= len(normalized_slug) <= 100 or not re.fullmatch(
+        r"[a-z0-9]+(?:-[a-z0-9]+)*", normalized_slug
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Use a workspace URL with 3–100 lowercase letters, numbers, and single hyphens between words.",
+        )
+
+    existing_slug = db.exec(
+        select(Organization.id).where(
+            func.lower(Organization.slug) == normalized_slug
         )
     ).first()
-
-    if existing_membership is not None:
+    if existing_slug is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": "USER_ALREADY_IN_ORGANIZATION",
-                "message": "You are already associated with an organization.",
+                "code": "SLUG_TAKEN",
+                "message": "This workspace URL is already in use.",
             },
         )
 
     organization = Organization(
         name=org_data.name,
-        slug=org_data.slug,
+        slug=normalized_slug,
         category=org_data.category,
         website_url=org_data.website_url,
         logo_url=org_data.logo_url,
@@ -89,15 +128,31 @@ def create_organization(
 
         return organization
 
-    except IntegrityError as exc:
+    except IntegrityError:
         db.rollback()
+
+        # The availability check is advisory; the unique database constraint
+        # remains authoritative if another request claims the slug meanwhile.
+        slug_exists = db.exec(
+            select(Organization.id).where(
+                func.lower(Organization.slug) == normalized_slug
+            )
+        ).first()
+
+        if slug_exists is not None:
+            detail = {
+                "code": "SLUG_TAKEN",
+                "message": "This workspace URL is no longer available.",
+            }
+        else:
+            detail = {
+                "code": "ORGANIZATION_CONFLICT",
+                "message": "Could not create organization. Check for duplicate organization details.",
+            }
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "ORGANIZATION_CONFLICT",
-                "message": "Could not create organization. Check for duplicate organization details.",
-            },
+            detail=detail,
         ) from None
 
  
@@ -159,8 +214,11 @@ def get_user_memberships(
 ):
     statement = (
         select(OrganizationMembership)
+        .join(Organization, Organization.id == OrganizationMembership.organization_id)
         .where(
-            OrganizationMembership.user_id == current_user.id
+            OrganizationMembership.user_id == current_user.id,
+            OrganizationMembership.status == MembershipStatus.ACTIVE,
+            Organization.is_active.is_(True),
         )
         .options(
             selectinload(OrganizationMembership.organization)

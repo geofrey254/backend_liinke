@@ -2,7 +2,7 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session, select
 
@@ -55,27 +55,57 @@ def get_current_user(
 def get_current_organization(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
+    organization_slug: Annotated[str | None, Header(alias="X-Organization-Slug")] = None,
 ) -> Organization:
-    statement = select(Organization).join(OrganizationMembership).where(
-        OrganizationMembership.user_id == current_user.id,
-        OrganizationMembership.status == MembershipStatus.ACTIVE
+    """Resolve the active organization within the authenticated user's memberships.
+
+    The explicit slug is supplied by the authenticated frontend workspace context.
+    When omitted, preserve single-membership compatibility; if the user belongs
+    to multiple organizations, require an explicit selection rather than silently
+    choosing an arbitrary organization.
+    """
+    statement = (
+        select(Organization)
+        .join(OrganizationMembership)
+        .where(
+            OrganizationMembership.user_id == current_user.id,
+            OrganizationMembership.status == MembershipStatus.ACTIVE,
+            Organization.is_active.is_(True),
+        )
+        .order_by(OrganizationMembership.created_at.asc())
     )
 
-    organization = db.exec(statement).first()
+    if organization_slug:
+        organization = db.exec(
+            statement.where(Organization.slug == organization_slug.strip().lower())
+        ).first()
+        if organization is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ORGANIZATION_ACCESS_DENIED",
+                    "message": "You do not have active access to this organization.",
+                },
+            )
+        return organization
 
-    if organization is None:
+    organizations = db.exec(statement).all()
+    if not organizations:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Organization not found",
         )
 
-    if not organization.is_active:
+    if len(organizations) > 1:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Organization is not active",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "ORGANIZATION_CONTEXT_REQUIRED",
+                "message": "Select an organization before accessing workspace data.",
+            },
         )
 
-    return organization
+    return organizations[0]
 
 def get_current_membership(
     current_user: Annotated[User, Depends(get_current_user)],
