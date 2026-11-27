@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.api.v1.endpoints import invitations, users, auth, organization, event, guests, access_levels, access_levels_zones, security_zones
+from app.api.v1.endpoints import invitations, passes, users, auth, organization, event, guests, access_levels, access_levels_zones, security_zones
 
 router = APIRouter()
 
@@ -12,3 +12,4 @@ router.include_router(access_levels.router, tags=["access_levels"])
 router.include_router(security_zones.router, tags=["security_zones"])
 router.include_router(access_levels_zones.router, tags=["access_levels_zones"])
 router.include_router(invitations.router, tags=["invitations"])
+router.include_router(passes.router, tags=["passes"])

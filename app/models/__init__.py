@@ -11,5 +11,5 @@ from app.models.guest import Guest
 from app.models.eventGuest import EventGuest
 from app.models.importBatches import ImportBatch
 from app.models.importRows import ImportRow
-from app.models.passes import Pass
+from app.models.passes import Pass, EventPassTemplate
 from app.models.eventCustomField import EventCustomField

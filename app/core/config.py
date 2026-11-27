@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # EMAIL SETTINGS
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
+    PASS_ENCRYPTION_KEY: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
 
     # CORS SETTINGS

@@ -208,6 +208,8 @@ Configure these backend environment variables:
 RESEND_API_KEY=re_...
 RESEND_FROM_EMAIL=Liinke <invites@your-verified-domain.com>
 FRONTEND_URL=https://your-frontend-domain.com
+# Keep this secret stable; used to encrypt stored pass credentials. If omitted, JWT_SECRET_KEY is used.
+PASS_ENCRYPTION_KEY=replace-with-a-long-random-secret
 ```
 
 Verify the sender domain in Resend before using a production sender address. The
@@ -218,3 +220,20 @@ required.
 The invitation link opens `/invite/accept?token=...` in the frontend. Run the
 Alembic migration that creates `organization_invitations` before deploying this
 feature to an existing database.
+
+## Guest passes
+
+Guest passes are managed from the organization's **Passes** workspace in the frontend. The backend adds event-scoped pass templates, unique QR credentials, PDF rendering, private download links, email distribution through Resend, bulk ZIP downloads, and pass revocation.
+
+Install the additional backend dependencies from `requirements.txt`, then apply the schema migration:
+
+```bash
+pip install -r requirements.txt
+alembic upgrade head
+```
+
+Configure `FRONTEND_URL`, `RESEND_API_KEY`, and `RESEND_FROM_EMAIL` for email delivery. Set a stable, random `PASS_ENCRYPTION_KEY` in the backend environment to encrypt QR and download credentials at rest. If it is omitted, the backend derives the encryption key from `JWT_SECRET_KEY`; changing that secret will make previously encrypted pass credentials unreadable.
+
+Eligible guests are registrations in `registered`, `confirmed`, or `approved` state. Passes are generated once per eligible event registration while an active pass exists. The QR payload is `LIINKE:PASS:<credential>`; the credential is hashed for comparison and encrypted at rest so the PDF can be rendered again. Download credentials are separate from QR credentials and can be revoked independently by revoking the pass.
+
+Scanning and entry validation are intentionally not included in this phase.
