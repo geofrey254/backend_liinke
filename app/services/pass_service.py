@@ -99,7 +99,7 @@ def pass_payload(db: Session, item: Pass) -> dict:
 
 
 def render_pdf(db: Session, item: Pass, qr_value: str) -> bytes:
-    data = pass_payload(db, item)
+    data = pass_payload(db, item)     
     guest, event, access = data["guest"], data["event"], data["access"]
     cfg = data["template"]
     if not guest or not event:
